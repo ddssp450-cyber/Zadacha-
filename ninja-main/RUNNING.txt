@@ -1,0 +1,30 @@
+NINJA – WINDOWS QUICK START (MYSQL 8)
+
+1. Install and start Docker Desktop.
+2. Extract the ZIP archive.
+3. Copy .env.example to .env.
+4. Edit .env and set unique values for MYSQL_ROOT_PASSWORD and MYSQL_PASSWORD.
+5. Open Command Prompt in this folder and run:
+
+   docker compose up --build -d
+
+6. Open http://localhost:8080
+
+Stop the application:
+   docker compose down
+
+Start it again:
+   docker compose up -d
+
+View logs:
+   docker compose logs -f
+
+IMPORTANT: `docker compose down -v` deletes the MySQL data volume. Do not use it unless you intend to erase the database.
+
+The existing demo accounts remain seeded on first database initialization:
+Owner: admin123
+Tenant: tenant123
+Builder: builder123
+Craftsman: master123
+
+Use the email addresses shown by the application's demo login controls.

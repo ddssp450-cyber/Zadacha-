@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+/* The building as its own section drawing: drafting film, graphite, a green cutting mat,
+   red-pen revision clouds for problems, a violet ink stamp for what is confirmed. */
+@theme {
+  --color-mat: #1f4a3a;
+  --color-mat-deep: #163829;
+  --color-mat-soft: #e1ebe4;
+  --color-film: #e9ece6;
+  --color-sheet: #f6f7f3;
+  --color-raise: #e3e7df;
+  --color-rule: #c3cac0;
+  --color-ink: #1e2326;
+  --color-mute: #596259;
+  --color-line: #cdd3c9;
+  --color-red: #c43323;
+  --color-red-soft: #f8e4df;
+  --color-hi: #f2e04b;
+  --color-hi-soft: #faf3b8;
+  --color-ochre: #7d6300;
+  --color-stamp: #5b3fa8;
+  --color-stamp-soft: #ece6f6;
+
+  --font-sans: "Geologica", system-ui, sans-serif;
+  --font-tech: "Jura", "Geologica", sans-serif;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  html {
+    background: var(--color-film);
+    color: var(--color-ink);
+    caret-color: var(--color-mat);
+    scrollbar-color: #a9b2a6 transparent;
+  }
+  ::selection {
+    background: var(--color-hi);
+    color: var(--color-ink);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-mat);
+    outline-offset: 2px;
+  }
+  /* Jura runs light; numbers and labels set in it need the heavier cut. */
+  .font-tech {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Cutting mat: the green field the drawing sits on, with its printed grid. */
+.mat {
+  background-color: var(--color-mat);
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: #fff;
+}
+
+/* A drawn tile: green field, thin white keyline. Used where a flat needs a mark. */
+.plate {
+  background: var(--color-mat);
+  color: #fff;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 3px var(--color-mat), inset 0 0 0 4px rgb(255 255 255 / 0.55);
+}
+.plate-deep { background: var(--color-mat-deep); }
+.plate-empty { background: var(--color-raise); color: var(--color-mute); box-shadow: inset 0 0 0 1px var(--color-line); }
+.plate-flag { box-shadow: inset 0 0 0 2px var(--color-hi), inset 0 0 0 4px var(--color-mat); }
+.plate-paid { box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px var(--color-stamp); }
+.plate-overdue { box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px var(--color-red); }
+.plate-beige { background: var(--color-hi-soft); color: var(--color-ink); border-radius: 8px; box-shadow: inset 0 0 0 1px var(--color-ochre); }
+
+/* Highlighter stroke behind text, slightly low like a real marker. */
+.hl {
+  background: linear-gradient(transparent 42%, var(--color-hi) 42% 90%, transparent 90%);
+  padding: 0 0.15em;
+  margin: 0 -0.15em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* Section-drawing hatches: roof insulation and the ground line. */
+.hatch-roof { background: repeating-linear-gradient(45deg, rgb(30 35 38 / 0.22) 0 1px, transparent 1px 7px); }
+.hatch-ground { background: repeating-linear-gradient(-45deg, var(--color-ink) 0 1.5px, transparent 1.5px 8px); }
+
+/* Hovering one flat dims the rest of the drawing. */
+.section-drawing:has(.flat:hover, .flat:focus-visible) .flat:not(:hover, :focus-visible) { opacity: 0.42; }
+.flat { transition: opacity 220ms var(--ease-out-expo), background-color 160ms; }
+
+/* Menu tabs as drafting plates on the mat: a faint keyline that firms up on hover,
+   and the current tab lifted as a paper sheet with a hard ink shadow that presses flat on click. */
+.menu-plate {
+  color: #d3e0d7;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  transition: translate 120ms var(--ease-out-expo), box-shadow 120ms var(--ease-out-expo), border-color 160ms, color 160ms;
+}
+.menu-plate:hover {
+  color: #fff;
+  border-color: rgb(255 255 255 / 0.5);
+}
+.menu-plate-active,
+.menu-plate-active:hover {
+  background: var(--color-sheet);
+  color: var(--color-ink);
+  border-color: var(--color-ink);
+  box-shadow: 3px 3px 0 var(--color-mat-deep);
+  translate: -1px -1px;
+}
+.menu-plate:active {
+  translate: 1px 1px;
+  box-shadow: 0 0 0 var(--color-mat-deep);
+}
+
+/* The one authored motion: red-pen clouds draw themselves, stamps press down after. */
+/* Animates to a gap-free dash, so the finished cloud is solid however the cell stretches it. */
+@keyframes draw { from { stroke-dasharray: 0 1; } to { stroke-dasharray: 1 0; } }
+.cloud path {
+  animation: draw 900ms var(--ease-out-expo) both;
+  animation-delay: calc(var(--i, 0) * 70ms + 150ms);
+}
+@keyframes press { from { transform: rotate(-12deg) scale(1.35); opacity: 0.001; } }
+.stamp {
+  transform: rotate(-12deg);
+  animation: press 380ms var(--ease-out-expo) both;
+  animation-delay: calc(var(--i, 0) * 70ms + 500ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cloud path, .stamp { animation: none; }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "BUILDING BRAIN — AI Building Management Platform",
+  "description": "Единна интелигентна платформа за цялостно управление на сгради, финанси, ремонти и наематели с вграден AI асистент.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
