@@ -37,6 +37,7 @@ interface NavbarProps {
   onSwitchBuilding: (buildingId: string) => void;
   // Absent for accounts that may not create buildings (only owners can).
   onCreateBuilding?: (fields: BuildingFields) => Promise<unknown>;
+  onClaimBuildingByIdentifier?: (identifier: string) => Promise<number>;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -54,8 +55,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeBuilding,
   onSwitchBuilding,
   onCreateBuilding,
+  onClaimBuildingByIdentifier,
 }) => {
   const [isNewBuildingOpen, setIsNewBuildingOpen] = React.useState(false);
+  const [isJoinBuildingOpen, setIsJoinBuildingOpen] = React.useState(false);
+  const [joinIdentifier, setJoinIdentifier] = React.useState('');
+  const [joinError, setJoinError] = React.useState<string | null>(null);
+  const [joinBusy, setJoinBusy] = React.useState(false);
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = React.useState(false);
 
   const isTenant = currentUser?.role === 'tenant';
@@ -139,6 +145,66 @@ export const Navbar: React.FC<NavbarProps> = ({
             {onCreateBuilding && <option value="__new" className="text-ink">+ Нова сграда…</option>}
           </select>
           {isNewBuildingOpen && onCreateBuilding && <BuildingFormModal onSave={onCreateBuilding} onClose={() => setIsNewBuildingOpen(false)} />}
+          {isJoinBuildingOpen && onClaimBuildingByIdentifier && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/45">
+              <div role="dialog" aria-label="Присъединяване към сграда" className="w-full max-w-md rounded-2xl bg-sheet border border-line p-6 space-y-4 text-xs">
+                <h3 className="text-base font-bold text-ink">Присъедини се към нова сграда</h3>
+                <p className="text-mute leading-relaxed">
+                  Ако друг собственик те е добавил като наемател, майстор или строител, въведи имейла, телефона или името, под което си записан.
+                </p>
+                <form
+                  className="space-y-3"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setJoinError(null);
+                    if (!joinIdentifier.trim()) return;
+                    setJoinBusy(true);
+                    try {
+                      const count = await onClaimBuildingByIdentifier(joinIdentifier.trim());
+                      if (count === 0) {
+                        setJoinError('Не намерихме нова сграда с тези данни.');
+                      } else {
+                        setJoinIdentifier('');
+                        setIsJoinBuildingOpen(false);
+                      }
+                    } catch (err) {
+                      setJoinError(err instanceof Error ? err.message : 'Грешка при търсене на сграда.');
+                    } finally {
+                      setJoinBusy(false);
+                    }
+                  }}
+                >
+                  <input
+                    className="w-full px-3 py-2 bg-raise border border-rule rounded-lg text-ink"
+                    value={joinIdentifier}
+                    onChange={(e) => setJoinIdentifier(e.target.value)}
+                    placeholder="Телефон, име или имейл…"
+                    required
+                  />
+                  {joinError && <p className="text-red">{joinError}</p>}
+                  <div className="flex justify-end gap-2 pt-2 border-t border-line">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsJoinBuildingOpen(false);
+                        setJoinError(null);
+                      }}
+                      className="px-4 py-2 text-mute hover:text-ink"
+                    >
+                      Отказ
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={joinBusy || !joinIdentifier.trim()}
+                      className="px-4 py-2 font-semibold text-white bg-mat hover:bg-mat-deep rounded-lg disabled:opacity-40"
+                    >
+                      {joinBusy ? 'Търсене…' : 'Намери сграда'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           {/* Zone 3: Camera, AI Trigger & User Profile */}
           <div className="flex items-center gap-2.5 shrink-0">
@@ -199,57 +265,36 @@ export const Navbar: React.FC<NavbarProps> = ({
                       className="fixed inset-0 z-30" 
                       onClick={() => setIsRoleDropdownOpen(false)} 
                     />
-                    <div className="absolute right-0 mt-2 w-72 rounded-xl bg-sheet border border-line  z-40 p-2 text-xs">
-                      <div className="px-2.5 py-2 border-b border-line flex items-center justify-between text-[11px] font-medium text-ink">
-                        <span>Превключи акаунт:</span>
-                        <span className="font-tech text-[10px] text-stamp">{allUsers.length} профила</span>
-                      </div>
-                      <div className="space-y-1 mt-1.5 max-h-56 overflow-y-auto">
-                        {allUsers.map((profile) => {
-                          const isSelected = profile.id === currentUser.id;
-                          return (
-                            <button
-                              key={profile.id}
-                              onClick={() => {
-                                setCurrentUser(profile);
-                                setIsRoleDropdownOpen(false);
-                              }}
-                              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors ${
-                                isSelected
-                                  ? 'bg-mat-soft text-ink font-medium border border-mat/50'
-                                  : 'text-ink hover:bg-sheet hover:text-ink'
-                              }`}
-                            >
-                              <span className="w-7 h-7 rounded-full grid place-items-center bg-mat-soft font-tech text-[11px] text-mat" aria-hidden>
-                    {profile.name.split(" ").map((w) => w[0]).slice(0, 2).join("")}
-                  </span>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-xs truncate font-medium text-ink">
-                                  {profile.name}
-                                </div>
-                                <div className="text-[10px] text-mute truncate">
-                                  {profile.roleTitle}
-                                </div>
-                              </div>
-                              {isSelected && (
-                                <UserCheck className="w-4 h-4 text-stamp shrink-0" />
-                              )}
-                            </button>
-                          );
-                        })}
+                    <div className="absolute right-0 mt-2 w-72 rounded-xl bg-sheet border border-line z-40 p-2 text-xs">
+                      <div className="px-2.5 py-2 border-b border-line space-y-0.5">
+                        <div className="text-xs font-semibold text-ink truncate">{currentUser.name}</div>
+                        <div className="text-[11px] text-mute truncate">{currentUser.email}</div>
+                        <div className="text-[10px] text-mat font-medium truncate">{currentUser.roleTitle}</div>
                       </div>
 
-                      <div className="border-t border-line mt-2 pt-2 space-y-1">
+                      <div className="mt-1.5 space-y-1">
+                        {onClaimBuildingByIdentifier && (
+                          <button
+                            onClick={() => {
+                              setIsRoleDropdownOpen(false);
+                              setIsJoinBuildingOpen(true);
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-2 text-xs text-mat hover:bg-mat-soft rounded-lg transition-colors font-medium"
+                          >
+                            <Building2 className="w-3.5 h-3.5" />
+                            <span>Присъедини се към сграда</span>
+                          </button>
+                        )}
                         {onOpenAuthModal && (
                           <button
                             onClick={() => {
                               setIsRoleDropdownOpen(false);
                               onOpenAuthModal();
                             }}
-                            className="w-full flex items-center gap-2 px-2.5 py-2 text-xs text-mat hover:bg-mat/40 rounded-lg transition-colors font-medium"
+                            className="w-full flex items-center gap-2 px-2.5 py-2 text-xs text-ink hover:bg-raise rounded-lg transition-colors font-medium"
                           >
                             <UserPlus className="w-3.5 h-3.5" />
-                            <span>+ Регистрация на нов акаунт</span>
+                            <span>Смени профил</span>
                           </button>
                         )}
                         <button

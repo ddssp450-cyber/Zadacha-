@@ -74,6 +74,14 @@ export const SectionDrawing: React.FC<{
   const cols = Math.max(1, ...[...floors.values()].map((l) => l.length));
   let mark = 0; // staggers the clouds and stamps as they draw in
 
+  if (apartments.length === 0) {
+    return (
+      <div className="section-drawing rounded-xl border border-dashed border-line bg-film p-6 text-center text-xs text-mute">
+        Все още няма добавени апартаменти в тази сграда.
+      </div>
+    );
+  }
+
   return (
     <div className="section-drawing">
       <div className="hatch-roof ml-[52px] h-5 border-b-2 border-ink" aria-hidden />

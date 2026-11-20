@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { CalendarEvent, EventCategory, UserRole, UserProfile } from '../types';
 import { DeleteButton } from './PhotoPicker';
+import { getAuthHeaders } from '../lib/firebase';
 
 interface CalendarViewProps {
   currentUser: UserProfile;
@@ -120,9 +121,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     setAiProposal(null);
 
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch('/api/ai/parse-calendar-command', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ command: aiCommandInput }),
       });
       if (res.ok) {

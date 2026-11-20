@@ -1,49 +1,52 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
-import { api } from '../api';
 import { DeleteButton } from './PhotoPicker';
+import {
+  AdminOverviewData,
+  deleteBuildingCascade,
+  deleteUserAsAdmin,
+  fetchAdminOverview,
+} from '../lib/firestoreStore';
 
-interface AdminUser {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  createdAt: string;
-  buildings: number;
-}
+const ROLE_BG: Record<string, string> = {
+  admin: 'Администратор',
+  owner: 'Собственик',
+  tenant: 'Наемател',
+  builder: 'Строител',
+  craftsman: 'Майстор',
+  user: 'Потребител',
+};
 
-interface AdminBuilding {
-  id: string;
-  name: string;
-  city: string;
-  owners: string | null;
-  members: number;
-  records: number;
-}
-
-const ROLE_BG: Record<string, string> = { owner: 'Собственик', tenant: 'Наемател', builder: 'Строител', craftsman: 'Майстор' };
-
-// Site-wide view for administrators only (the server refuses everyone else).
 export const AdminView: React.FC<{ currentUserId: string; onChanged?: () => void }> = ({ currentUserId, onChanged }) => {
-  const [data, setData] = useState<{ users: AdminUser[]; buildings: AdminBuilding[] } | null>(null);
+  const [data, setData] = useState<AdminOverviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = () =>
-    api<{ users: AdminUser[]; buildings: AdminBuilding[] }>('/api/admin')
+  const load = () => {
+    setError(null);
+    fetchAdminOverview()
       .then(setData)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err instanceof Error ? err.message : 'Грешка при зареждане.'));
+  };
 
   useEffect(() => {
     load();
   }, []);
 
-  const remove = (url: string) =>
-    api(url, 'DELETE')
+  const handleRemoveUser = (userId: string) =>
+    deleteUserAsAdmin(userId)
       .then(() => {
         load();
         onChanged?.();
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err instanceof Error ? err.message : 'Грешка при изтриване.'));
+
+  const handleRemoveBuilding = (buildingId: string) =>
+    deleteBuildingCascade(buildingId)
+      .then(() => {
+        load();
+        onChanged?.();
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Грешка при изтриване.'));
 
   return (
     <div className="space-y-6 text-xs">
@@ -53,7 +56,11 @@ export const AdminView: React.FC<{ currentUserId: string; onChanged?: () => void
         </h2>
         <p className="text-mute mt-1">Всички потребители и сгради в Building Brain. Вижда се само от администратори.</p>
       </div>
-      {error && <p role="alert" className="text-red">{error}</p>}
+      {error && (
+        <p role="alert" className="text-red">
+          {error}
+        </p>
+      )}
       {!data ? (
         <p className="text-mute">Зареждане…</p>
       ) : (
@@ -80,7 +87,9 @@ export const AdminView: React.FC<{ currentUserId: string; onChanged?: () => void
                     <td className="py-2 pr-3 text-ink font-tech">{u.buildings}</td>
                     <td className="py-2 pr-3 text-mute font-tech">{new Date(u.createdAt).toLocaleDateString('bg-BG')}</td>
                     <td className="py-2 text-right">
-                      {u.id !== currentUserId && <DeleteButton className="!px-2 !py-0.5 !text-[10px]" onDelete={() => remove(`/api/admin/users/${encodeURIComponent(u.id)}`)} />}
+                      {u.id !== currentUserId && (
+                        <DeleteButton className="!px-2 !py-0.5 !text-[10px]" onDelete={() => handleRemoveUser(u.id)} />
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -110,7 +119,7 @@ export const AdminView: React.FC<{ currentUserId: string; onChanged?: () => void
                     <td className="py-2 pr-3 text-ink font-tech">{b.members}</td>
                     <td className="py-2 pr-3 text-ink font-tech">{b.records}</td>
                     <td className="py-2 text-right">
-                      <DeleteButton className="!px-2 !py-0.5 !text-[10px]" onDelete={() => remove(`/api/admin/buildings/${encodeURIComponent(b.id)}`)} />
+                      <DeleteButton className="!px-2 !py-0.5 !text-[10px]" onDelete={() => handleRemoveBuilding(b.id)} />
                     </td>
                   </tr>
                 ))}

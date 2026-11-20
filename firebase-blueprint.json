@@ -1,0 +1,376 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Authenticated user profile with active building pointer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 320 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "roleTitle": { "type": "string", "maxLength": 160 },
+        "companyName": { "type": "string", "maxLength": 160 },
+        "avatarUrl": { "type": "string", "maxLength": 1024 },
+        "activeBuildingId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "uid", "name", "email", "phone", "roleTitle", "avatarUrl", "createdAt", "updatedAt"]
+    },
+    "Building": {
+      "title": "Building",
+      "description": "Residential or mixed-use building managed on the platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerEmail": { "type": "string", "format": "email", "maxLength": 320 },
+        "memberUids": { "type": "array", "description": "UIDs of members with read/query access (max 50)" },
+        "invitedEmails": { "type": "array", "description": "Lowercase invited emails for invite-time access (max 50)" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "address": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "city": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "postalCode": { "type": "string", "maxLength": 20 },
+        "totalFloors": { "type": "integer" },
+        "totalApartments": { "type": "integer" },
+        "occupiedApartments": { "type": "integer" },
+        "yearBuilt": { "type": "integer" },
+        "reserveFundBalance": { "type": "number" },
+        "monthlyCollectionRate": { "type": "number" },
+        "exteriorImage": { "type": "string", "maxLength": 500000 },
+        "lobbyImage": { "type": "string", "maxLength": 500000 },
+        "facilities": { "type": "array", "description": "Building amenities (max 30 strings)" },
+        "contactManager": { "type": "string", "maxLength": 120 },
+        "phoneManager": { "type": "string", "maxLength": 40 },
+        "iban": { "type": "string", "maxLength": 64 },
+        "bankName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "ownerId", "ownerEmail", "memberUids", "invitedEmails", "name", "address", "city", "postalCode", "totalFloors", "totalApartments", "occupiedApartments", "yearBuilt", "reserveFundBalance", "monthlyCollectionRate", "exteriorImage", "lobbyImage", "facilities", "contactManager", "phoneManager", "createdAt", "updatedAt"]
+    },
+    "BuildingMember": {
+      "title": "BuildingMember",
+      "description": "Role assignment for a user inside a building",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "buildingId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 320 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "name": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "enum": ["owner", "tenant", "builder", "craftsman"] },
+        "apartmentNumber": { "type": "string", "maxLength": 32 },
+        "inviteId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "buildingId", "ownerId", "email", "role", "createdAt"]
+    },
+    "BuildingInvite": {
+      "title": "BuildingInvite",
+      "description": "Invitation/enrollment record for a building member by email, phone, or name",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "buildingId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "buildingName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 320 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "name": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "enum": ["tenant", "builder", "craftsman"] },
+        "apartmentNumber": { "type": "string", "maxLength": 32 },
+        "lookupHashes": { "type": "array", "description": "SHA-256 hashes of email/phone/name identifiers" },
+        "claimedUids": { "type": "array", "description": "UIDs that claimed this invitation" },
+        "authorizedDocs": { "type": "object", "description": "Map of subcollection name to authorized document IDs" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "buildingId", "buildingName", "ownerId", "email", "role", "createdAt"]
+    },
+    "InviteLookup": {
+      "title": "InviteLookup",
+      "description": "Zero-PII lookup index mapping SHA-256 identifier hash to invite IDs across all buildings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[a-f0-9]{64}$" },
+        "inviteIds": { "type": "array", "description": "Invite IDs matching this identifier hash (max 50)" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "inviteIds", "updatedAt"]
+    },
+    "TenantClaim": {
+      "title": "TenantClaim",
+      "description": "Per-user claim proof holding the SHA-256 hashes submitted by the user during tenant lookup",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "claimHashes": { "type": "array", "description": "Candidate SHA-256 hashes submitted by the user" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "claimHashes", "updatedAt"]
+    },
+    "Apartment": {
+      "title": "Apartment",
+      "description": "Apartment unit inside a building",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "buildingId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberUids": { "type": "array" },
+        "invitedEmails": { "type": "array" },
+        "number": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "floor": { "type": "integer" },
+        "entrance": { "type": "string", "maxLength": 32 },
+        "areaSqM": { "type": "number" },
+        "rooms": { "type": "integer" },
+        "tenantId": { "type": "string", "maxLength": 128 },
+        "tenantName": { "type": "string", "maxLength": 120 },
+        "tenantPhone": { "type": "string", "maxLength": 40 },
+        "status": { "type": "string", "enum": ["occupied", "vacant", "under_repair"] },
+        "monthlyRent": { "type": "number" },
+        "monthlyMaintenanceFee": { "type": "number" },
+        "waterMeterReading": { "type": "number" },
+        "electricMeterReading": { "type": "number" },
+        "lastMeterUpdate": { "type": "string", "maxLength": 32 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "buildingId", "ownerId", "memberUids", "invitedEmails", "number", "floor", "areaSqM", "rooms", "status", "monthlyRent", "monthlyMaintenanceFee", "waterMeterReading", "electricMeterReading", "lastMeterUpdate", "updatedAt"]
+    },
+    "PaymentObligation": {
+      "title": "PaymentObligation",
+      "description": "Rent, utility, or maintenance payment obligation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "buildingId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberUids": { "type": "array" },
+        "invitedEmails": { "type": "array" },
+        "apartmentId": { "type": "string", "maxLength": 128 },
+        "apartmentNumber": { "type": "string", "maxLength": 32 },
+        "tenantId": { "type": "string", "maxLength": 128 },
+        "tenantName": { "type": "string", "maxLength": 120 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "type": { "type": "string", "enum": ["rent", "electricity", "water", "common_fund", "repair_fund"] },
+        "amount": { "type": "number" },
+        "dueDate": { "type": "string", "maxLength": 32 },
+        "period": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["unpaid", "declared_paid", "pending_verification", "confirmed_paid", "partially_paid", "overdue"] },
+        "paidAmount": { "type": "number" },
+        "paidAt": { "type": "string", "maxLength": 64 },
+        "proofUrl": { "type": "string", "maxLength": 600000 },
+        "proofType": { "type": "string", "enum": ["image", "pdf"] },
+        "proofExtractedData": { "type": "object" },
+        "confirmedByOwnerAt": { "type": "string", "maxLength": 64 },
+        "rejectedReason": { "type": "string", "maxLength": 500 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "buildingId", "ownerId", "memberUids", "invitedEmails", "apartmentId", "apartmentNumber", "tenantId", "tenantName", "title", "type", "amount", "dueDate", "period", "status", "updatedAt"]
+    },
+    "Appliance": {
+      "title": "Appliance",
+      "description": "Shared or unit technical equipment and service history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "buildingId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberUids": { "type": "array" },
+        "invitedEmails": { "type": "array" },
+        "apartmentId": { "type": "string", "maxLength": 128 },
+        "locationName": { "type": "string", "maxLength": 160 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "category": { "type": "string", "enum": ["hvac", "boiler", "elevator", "intercom", "hydrophore", "generator"] },
+        "model": { "type": "string", "maxLength": 160 },
+        "manufacturer": { "type": "string", "maxLength": 120 },
+        "serialNumber": { "type": "string", "maxLength": 120 },
+        "installationDate": { "type": "string", "maxLength": 32 },
+        "warrantyExpiryDate": { "type": "string", "maxLength": 32 },
+        "status": { "type": "string", "enum": ["operational", "needs_service", "critical_issue", "decommissioned"] },
+        "lastServicedAt": { "type": "string", "maxLength": 32 },
+        "nextMaintenanceDue": { "type": "string", "maxLength": 32 },
+        "photoUrl": { "type": "string", "maxLength": 500000 },
+        "manualUrl": { "type": "string", "maxLength": 1024 },
+        "energyClass": { "type": "string", "maxLength": 32 },
+        "serviceHistory": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "buildingId", "ownerId", "memberUids", "invitedEmails", "locationName", "name", "category", "model", "manufacturer", "serialNumber", "installationDate", "warrantyExpiryDate", "status", "lastServicedAt", "nextMaintenanceDue", "photoUrl", "serviceHistory", "updatedAt"]
+    },
+    "RepairTicket": {
+      "title": "RepairTicket",
+      "description": "Maintenance or repair ticket",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "buildingId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberUids": { "type": "array" },
+        "invitedEmails": { "type": "array" },
+        "ticketNumber": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 4000 },
+        "category": { "type": "string", "enum": ["plumbing", "electrical", "hvac", "common_area", "construction_defect", "elevator"] },
+        "priority": { "type": "string", "enum": ["urgent", "high", "medium", "low"] },
+        "status": { "type": "string", "enum": ["reported", "approved", "scheduled", "in_progress", "completed", "rejected"] },
+        "apartmentId": { "type": "string", "maxLength": 128 },
+        "apartmentNumber": { "type": "string", "maxLength": 32 },
+        "reporterRole": { "type": "string", "enum": ["owner", "tenant", "builder", "craftsman"] },
+        "reporterName": { "type": "string", "maxLength": 120 },
+        "assignedCraftsmanId": { "type": "string", "maxLength": 128 },
+        "assignedCraftsmanName": { "type": "string", "maxLength": 120 },
+        "assignedBuilderName": { "type": "string", "maxLength": 120 },
+        "estimatedBudget": { "type": "number" },
+        "approvedBudget": { "type": "number" },
+        "actualCost": { "type": "number" },
+        "reportedDate": { "type": "string", "maxLength": 32 },
+        "deadlineDate": { "type": "string", "maxLength": 32 },
+        "scheduledVisitDate": { "type": "string", "maxLength": 32 },
+        "completedDate": { "type": "string", "maxLength": 32 },
+        "locationDetail": { "type": "string", "maxLength": 240 },
+        "beforePhotos": { "type": "array" },
+        "afterPhotos": { "type": "array" },
+        "materialsUsed": { "type": "array" },
+        "technicianNotes": { "type": "string", "maxLength": 2000 },
+        "ownerApprovalNotes": { "type": "string", "maxLength": 2000 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "buildingId", "ownerId", "createdByUid", "memberUids", "invitedEmails", "ticketNumber", "title", "description", "category", "priority", "status", "reporterRole", "reporterName", "estimatedBudget", "reportedDate", "deadlineDate", "locationDetail", "beforePhotos", "afterPhotos", "updatedAt"]
+    },
+    "ConstructionDefect": {
+      "title": "ConstructionDefect",
+      "description": "Warranty / construction defect tracked by owner and builder",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "buildingId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberUids": { "type": "array" },
+        "invitedEmails": { "type": "array" },
+        "defectNumber": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "location": { "type": "string", "maxLength": 240 },
+        "severity": { "type": "string", "enum": ["cosmetic", "structural", "isolation", "finishing"] },
+        "status": { "type": "string", "enum": ["open", "fixing", "verified_fixed"] },
+        "reportedBy": { "type": "string", "maxLength": 120 },
+        "reportedAt": { "type": "string", "maxLength": 32 },
+        "deadline": { "type": "string", "maxLength": 32 },
+        "contractorName": { "type": "string", "maxLength": 160 },
+        "photos": { "type": "array" },
+        "actionPlan": { "type": "string", "maxLength": 2000 },
+        "verifiedAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "buildingId", "ownerId", "memberUids", "invitedEmails", "defectNumber", "title", "location", "severity", "status", "reportedBy", "reportedAt", "deadline", "contractorName", "photos", "actionPlan", "updatedAt"]
+    },
+    "CalendarEvent": {
+      "title": "CalendarEvent",
+      "description": "Scheduled building event, inspection, or repair visit",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "buildingId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberUids": { "type": "array" },
+        "invitedEmails": { "type": "array" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "type": "string", "enum": ["rent_deadline", "repair", "construction", "inspection", "maintenance", "cleaning", "meeting"] },
+        "startDateTime": { "type": "string", "maxLength": 64 },
+        "endDateTime": { "type": "string", "maxLength": 64 },
+        "apartmentNumber": { "type": "string", "maxLength": 32 },
+        "assignedToName": { "type": "string", "maxLength": 120 },
+        "assignedRole": { "type": "string", "enum": ["owner", "tenant", "builder", "craftsman", "all"] },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "cancelled"] },
+        "description": { "type": "string", "maxLength": 2000 },
+        "priority": { "type": "string", "enum": ["urgent", "high", "normal"] },
+        "isRecurring": { "type": "boolean" },
+        "recurrenceRule": { "type": "string", "maxLength": 120 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "buildingId", "ownerId", "memberUids", "invitedEmails", "title", "category", "startDateTime", "endDateTime", "assignedToName", "assignedRole", "status", "description", "priority", "updatedAt"]
+    },
+    "ExpenseRecord": {
+      "title": "ExpenseRecord",
+      "description": "Reserve fund expense record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "buildingId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberUids": { "type": "array" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "type": "string", "enum": ["cleaning", "elevator_service", "landscaping", "security", "repair", "utilities"] },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "maxLength": 32 },
+        "vendor": { "type": "string", "maxLength": 160 },
+        "invoiceNumber": { "type": "string", "maxLength": 80 },
+        "status": { "type": "string", "enum": ["pending_approval", "approved", "paid"] },
+        "approvedByOwner": { "type": "boolean" },
+        "documentUrl": { "type": "string", "maxLength": 600000 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "buildingId", "ownerId", "memberUids", "title", "category", "amount", "date", "vendor", "invoiceNumber", "status", "approvedByOwner", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Private user profile and active building selection"
+    },
+    "/invites/{inviteId}": {
+      "schema": { "$ref": "#/entities/BuildingInvite" },
+      "description": "Building invitations/enrollments keyed by invite ID"
+    },
+    "/inviteLookups/{lookupHash}": {
+      "schema": { "$ref": "#/entities/InviteLookup" },
+      "description": "Zero-PII SHA-256 lookup index mapping identifier hash to invite IDs"
+    },
+    "/tenantClaims/{userId}": {
+      "schema": { "$ref": "#/entities/TenantClaim" },
+      "description": "Per-user claim hashes for multi-building lookup verification"
+    },
+    "/buildings/{buildingId}": {
+      "schema": { "$ref": "#/entities/Building" },
+      "description": "Building metadata and reserve fund balance"
+    },
+    "/buildings/{buildingId}/members/{memberUid}": {
+      "schema": { "$ref": "#/entities/BuildingMember" },
+      "description": "Authoritative role membership per building"
+    },
+    "/buildings/{buildingId}/apartments/{apartmentId}": {
+      "schema": { "$ref": "#/entities/Apartment" },
+      "description": "Apartments inside a building"
+    },
+    "/buildings/{buildingId}/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/PaymentObligation" },
+      "description": "Rent and utility payment obligations"
+    },
+    "/buildings/{buildingId}/appliances/{applianceId}": {
+      "schema": { "$ref": "#/entities/Appliance" },
+      "description": "Building and apartment appliances"
+    },
+    "/buildings/{buildingId}/repairTickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/RepairTicket" },
+      "description": "Repair tickets inside a building"
+    },
+    "/buildings/{buildingId}/defects/{defectId}": {
+      "schema": { "$ref": "#/entities/ConstructionDefect" },
+      "description": "Construction warranty defects"
+    },
+    "/buildings/{buildingId}/calendarEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/CalendarEvent" },
+      "description": "Scheduled events for a building"
+    },
+    "/buildings/{buildingId}/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/ExpenseRecord" },
+      "description": "Building reserve fund expenses"
+    }
+  }
+}

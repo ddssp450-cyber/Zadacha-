@@ -1,17 +1,13 @@
 import React, { useState } from 'react';
-import { 
-  Receipt, 
-  Plus, 
-  DollarSign, 
-  CheckCircle2, 
-  Clock, 
-  FileText, 
-  Download, 
-  X, 
-  Check, 
+import {
+  Receipt,
+  Plus,
+  CheckCircle2,
+  X,
   ShieldCheck,
   TrendingDown,
-  Building2
+  Building2,
+  Edit3,
 } from 'lucide-react';
 import { ExpenseRecord, UserProfile } from '../types';
 import { isoDay, monthLabel } from '../format';
@@ -24,6 +20,7 @@ interface ExpensesViewProps {
   onAddExpense: (expense: Omit<ExpenseRecord, 'id'>) => void;
   onApproveExpense: (expenseId: string) => void;
   onDeleteExpense?: (expenseId: string) => void;
+  onUpdateReserveBalance?: (newBalance: number) => Promise<unknown>;
 }
 
 export const ExpensesView: React.FC<ExpensesViewProps> = ({
@@ -33,6 +30,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   onAddExpense,
   onApproveExpense,
   onDeleteExpense,
+  onUpdateReserveBalance,
 }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -41,9 +39,15 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [newInvoiceNumber, setNewInvoiceNumber] = useState(`INV-${new Date().getFullYear()}-`);
   const [newCategory, setNewCategory] = useState<ExpenseRecord['category']>('repair');
 
+  const [isEditingBalance, setIsEditingBalance] = useState(false);
+  const [balanceInput, setBalanceInput] = useState<number>(reserveFundBalance);
+  const [balanceSaving, setBalanceSaving] = useState(false);
+
   const thisMonth = isoDay(new Date()).slice(0, 7);
   const monthExpenses = expenses.filter((e) => e.date?.startsWith(thisMonth));
   const totalSpent = monthExpenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const pendingExpenses = expenses.filter((e) => e.status !== 'paid').reduce((acc, curr) => acc + curr.amount, 0);
+  const projectedBalance = Math.round((reserveFundBalance - pendingExpenses) * 100) / 100;
 
   const getCategoryLabel = (category: ExpenseRecord['category']) => {
     switch (category) {
@@ -53,7 +57,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       case 'landscaping': return 'Озеленяване & Двор';
       case 'security': return 'Охрана & Видеонаблюдение';
       case 'utilities': return 'Консумативи общи части';
-      // Unknown values (old rows, AI output) must not crash the page
       default: return String(category ?? '—');
     }
   };
@@ -66,7 +69,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             Разходи и фонд „Ремонт“
           </h2>
           <p className="text-xs text-mute mt-0.5">
-            Къде отидоха парите на сградата. С фактура за всеки лев.
+            Къде отидоха парите на сградата. С фактура за всеки разход.
           </p>
         </div>
 
@@ -83,20 +86,73 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
       {/* Financial Health Strip */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-5 rounded-2xl bg-sheet border border-stamp  relative overflow-hidden">
-          <div className="flex items-center justify-between text-ink text-xs mb-1">
+        <div className="p-5 rounded-2xl bg-sheet border border-stamp relative overflow-hidden space-y-2">
+          <div className="flex items-center justify-between text-ink text-xs">
             <span>Наличност във Фонд Ремонт:</span>
             <ShieldCheck className="w-4 h-4 text-stamp" />
           </div>
-          <div className="text-2xl font-bold font-tech tabular-nums text-ink">
-            {reserveFundBalance.toLocaleString('bg-BG')} €
-          </div>
-          <p className="text-[11px] text-stamp mt-1 font-medium">
+          {isEditingBalance && onUpdateReserveBalance ? (
+            <form
+              className="flex items-center gap-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setBalanceSaving(true);
+                try {
+                  await onUpdateReserveBalance(Number(balanceInput) || 0);
+                  setIsEditingBalance(false);
+                } finally {
+                  setBalanceSaving(false);
+                }
+              }}
+            >
+              <input
+                type="number"
+                step="0.01"
+                value={balanceInput}
+                onChange={(e) => setBalanceInput(Number(e.target.value))}
+                className="w-full px-2.5 py-1.5 bg-film border border-rule rounded-lg text-ink font-tech text-sm"
+              />
+              <button
+                type="submit"
+                disabled={balanceSaving}
+                className="px-2.5 py-1.5 text-[11px] font-semibold text-white bg-mat rounded-lg shrink-0"
+              >
+                {balanceSaving ? '…' : 'Запази'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsEditingBalance(false)}
+                className="px-2 py-1.5 text-[11px] text-mute"
+              >
+                Отказ
+              </button>
+            </form>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-2xl font-bold font-tech tabular-nums text-ink">
+                {reserveFundBalance.toLocaleString('bg-BG')} €
+              </div>
+              {currentUser.role === 'owner' && onUpdateReserveBalance && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBalanceInput(reserveFundBalance);
+                    setIsEditingBalance(true);
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-ink bg-raise hover:bg-rule rounded border border-rule"
+                >
+                  <Edit3 className="w-3 h-3 text-mat" />
+                  <span>Промени</span>
+                </button>
+              )}
+            </div>
+          )}
+          <p className="text-[11px] text-stamp font-medium">
             Резервен буфер на сградата
           </p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-sheet border border-ochre ">
+        <div className="p-5 rounded-2xl bg-sheet border border-ochre">
           <div className="flex items-center justify-between text-ink text-xs mb-1">
             <span>Разходи за {monthLabel(new Date()).toLowerCase()}:</span>
             <TrendingDown className="w-4 h-4 text-ink" />
@@ -109,22 +165,24 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           </p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-sheet border border-line ">
+        <div className="p-5 rounded-2xl bg-sheet border border-line">
           <div className="flex items-center justify-between text-ink text-xs mb-1">
-            <span>Прогнозен остатък в края на месеца:</span>
+            <span>Прогнозен остатък след чакащи разходи:</span>
             <Building2 className="w-4 h-4 text-mat" />
           </div>
           <div className="text-2xl font-bold font-tech tabular-nums text-mat">
-            {(reserveFundBalance - 420).toLocaleString('bg-BG')} €
+            {projectedBalance.toLocaleString('bg-BG')} €
           </div>
           <p className="text-[11px] text-mute mt-1">
-            Всички планирани такси покриват разходите
+            {pendingExpenses > 0
+              ? `Извадени ${pendingExpenses.toLocaleString('bg-BG')} € неплатени разходи`
+              : 'Няма чакащи неплатени разходи'}
           </p>
         </div>
       </div>
 
       {/* Expenses Ledger Table */}
-      <div className="rounded-2xl border border-line bg-sheet overflow-hidden ">
+      <div className="rounded-2xl border border-line bg-sheet overflow-hidden">
         <div className="p-4 border-b border-line flex items-center justify-between bg-sheet">
           <h3 className="text-sm font-bold text-ink flex items-center gap-2">
             <Receipt className="w-4 h-4 text-mat" />
@@ -148,57 +206,66 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-line/60">
-              {expenses.map((exp) => (
-                <tr key={exp.id} className="hover:bg-sheet transition-colors">
-                  <td className="py-3 px-4 font-tech text-ink text-[11px]">
-                    {exp.date}
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="font-semibold text-ink">
-                      {exp.title}
-                    </div>
-                    <div className="text-[11px] text-mute">
-                      {getCategoryLabel(exp.category)}
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-ink font-medium">
-                    {exp.vendor}
-                  </td>
-                  <td className="py-3 px-4 font-tech text-mat text-[11px]">
-                    {exp.invoiceNumber}
-                  </td>
-                  <td className="py-3 px-4 text-right font-tech font-bold tabular-nums text-ink text-sm">
-                    {exp.amount.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
-                  </td>
-                  <td className="py-3 px-4">
-                    {exp.status === 'paid' ? (
-                      <span className="text-stamp flex items-center gap-1 font-semibold text-[11px] px-2 py-0.5 rounded bg-stamp-soft border border-stamp w-fit">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Платено</span>
-                      </span>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="text-ink text-[11px] px-2 py-0.5 rounded bg-hi-soft border border-ochre">Одобрено</span>
-                        {currentUser.role === 'owner' && (
-                          <button
-                            onClick={() => onApproveExpense(exp.id)}
-                            className="px-2 py-0.5 text-[10px] font-semibold bg-mat hover:bg-mat-deep text-white rounded border border-mat/40 transition-colors"
-                          >
-                            Маркирай платено
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {currentUser.role === 'owner' && onDeleteExpense && (
-                      <DeleteButton className="mt-1 !px-2 !py-0.5 !text-[10px]" onDelete={() => onDeleteExpense(exp.id)} />
-                    )}
+              {expenses.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-mute text-xs">
+                    Все още няма добавени разходи или фактури.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                expenses.map((exp) => (
+                  <tr key={exp.id} className="hover:bg-sheet transition-colors">
+                    <td className="py-3 px-4 font-tech text-ink text-[11px]">
+                      {exp.date}
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="font-semibold text-ink">
+                        {exp.title}
+                      </div>
+                      <div className="text-[11px] text-mute">
+                        {getCategoryLabel(exp.category)}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-ink font-medium">
+                      {exp.vendor}
+                    </td>
+                    <td className="py-3 px-4 font-tech text-mat text-[11px]">
+                      {exp.invoiceNumber}
+                    </td>
+                    <td className="py-3 px-4 text-right font-tech font-bold tabular-nums text-ink text-sm">
+                      {exp.amount.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
+                    </td>
+                    <td className="py-3 px-4">
+                      {exp.status === 'paid' ? (
+                        <span className="text-stamp flex items-center gap-1 font-semibold text-[11px] px-2 py-0.5 rounded bg-stamp-soft border border-stamp w-fit">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Платено</span>
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="text-ink text-[11px] px-2 py-0.5 rounded bg-hi-soft border border-ochre">Одобрено</span>
+                          {currentUser.role === 'owner' && (
+                            <button
+                              onClick={() => onApproveExpense(exp.id)}
+                              className="px-2 py-0.5 text-[10px] font-semibold bg-mat hover:bg-mat-deep text-white rounded border border-mat/40 transition-colors"
+                            >
+                              Маркирай платено
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {currentUser.role === 'owner' && onDeleteExpense && (
+                        <DeleteButton className="mt-1 !px-2 !py-0.5 !text-[10px]" onDelete={() => onDeleteExpense(exp.id)} />
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
 
       {/* Add Expense Modal */}
       {isAddModalOpen && (

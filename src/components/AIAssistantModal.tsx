@@ -12,6 +12,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { ChatMessage, UserProfile, Building, PaymentObligation, RepairTicket, CalendarEvent } from '../types';
+import { getAuthHeaders } from '../lib/firebase';
 
 interface AIAssistantModalProps {
   isOpen: boolean;
@@ -108,9 +109,10 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
     setIsLoading(true);
 
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           message: text,
           role: currentUser.role,
@@ -202,7 +204,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
               <h3 className="text-sm font-bold text-ink flex items-center gap-2">
                 <span>Building Brain AI Асистент</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-stamp-soft text-stamp border border-stamp font-tech">
-                  Активен модел: Claude Haiku 5.5
+                  Активен модел: Gemini AI
                 </span>
               </h3>
               <p className="text-[11px] text-ink">

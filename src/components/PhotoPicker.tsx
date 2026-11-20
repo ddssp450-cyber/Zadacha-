@@ -1,17 +1,30 @@
 import React, { useState } from 'react';
 import { Camera, Trash2, X } from 'lucide-react';
 
-// Photos are stored inline in the record, so shrink them to a JPEG of at most 1280px first.
-// shortcut: data URLs in jsonb; move to file storage if photos get heavy.
-async function photoToDataUrl(file: File, max = 1280): Promise<string> {
+// Shrink images to bounded JPEG data URLs so documents stay well under Firestore's 1MB limit.
+export async function fileToBoundedDataUrl(file: File, maxDim = 960, maxChars = 180000): Promise<string> {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  return canvas.toDataURL('image/jpeg', 0.8);
+  try {
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    for (const quality of [0.78, 0.62, 0.45, 0.32]) {
+      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+      if (dataUrl.length <= maxChars) return dataUrl;
+    }
+
+    // Final downscale if still above threshold
+    const smaller = document.createElement('canvas');
+    smaller.width = Math.max(1, Math.round(canvas.width * 0.6));
+    smaller.height = Math.max(1, Math.round(canvas.height * 0.6));
+    smaller.getContext('2d')!.drawImage(canvas, 0, 0, smaller.width, smaller.height);
+    return smaller.toDataURL('image/jpeg', 0.45);
+  } finally {
+    bitmap.close();
+  }
 }
 
 export const PhotoPicker: React.FC<{
@@ -29,7 +42,7 @@ export const PhotoPicker: React.FC<{
     setBusy(true);
     setError(null);
     try {
-      const added = await Promise.all([...files].slice(0, max - photos.length).map((f) => photoToDataUrl(f)));
+      const added = await Promise.all([...files].slice(0, max - photos.length).map((f) => fileToBoundedDataUrl(f, 960, 180000)));
       onChange([...photos, ...added]);
     } catch {
       setError('Тази снимка не може да се отвори. Пробвай JPG или PNG.');
@@ -75,7 +88,11 @@ export const PhotoPicker: React.FC<{
           }}
         />
       </div>
-      {error && <p role="alert" className="text-[11px] text-red">{error}</p>}
+      {error && (
+        <p role="alert" className="text-[11px] text-red">
+          {error}
+        </p>
+      )}
     </div>
   );
 };

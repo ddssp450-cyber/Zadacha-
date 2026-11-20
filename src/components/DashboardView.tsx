@@ -74,12 +74,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [showIbanModal, setShowIbanModal] = useState(false);
 
   // Tenant apartment resolution
-  const tenantApt = apartments.find(
-    (a) => a.number === (currentUser.apartmentNumber ?? '')
-  ) || apartments.find((a) => a.tenantName === currentUser.name) || apartments[4];
+  const tenantApt =
+    apartments.find((a) => currentUser.apartmentNumber && a.number === currentUser.apartmentNumber) ||
+    apartments.find((a) => a.tenantName && a.tenantName === currentUser.name);
 
-  const [waterInput, setWaterInput] = useState<number>(tenantApt?.waterMeterReading || 118.6);
-  const [elecInput, setElecInput] = useState<number>(tenantApt?.electricMeterReading || 9840.3);
+  const [waterInput, setWaterInput] = useState<number>(tenantApt?.waterMeterReading ?? 0);
+  const [elecInput, setElecInput] = useState<number>(tenantApt?.electricMeterReading ?? 0);
   const [meterSavedMessage, setMeterSavedMessage] = useState(false);
 
   // Calculations
@@ -286,7 +286,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <span>Водомер</span>
                   </div>
                   <div className="text-base font-bold font-tech tabular-nums text-ink mt-0.5">
-                    {tenantApt?.waterMeterReading || 118.6} m³
+                    {tenantApt ? `${tenantApt.waterMeterReading} m³` : '—'}
                   </div>
                 </div>
 
@@ -296,7 +296,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <span>Електромер</span>
                   </div>
                   <div className="text-base font-bold font-tech tabular-nums text-ink mt-0.5">
-                    {tenantApt?.electricMeterReading || 9840.3} kWh
+                    {tenantApt ? `${tenantApt.electricMeterReading} kWh` : '—'}
                   </div>
                 </div>
               </div>
@@ -304,12 +304,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             <div className="pt-2 border-t border-ochre">
               <button
+                disabled={!tenantApt}
                 onClick={() => {
-                  setWaterInput(tenantApt?.waterMeterReading || 118.6);
-                  setElecInput(tenantApt?.electricMeterReading || 9840.3);
+                  setWaterInput(tenantApt?.waterMeterReading ?? 0);
+                  setElecInput(tenantApt?.electricMeterReading ?? 0);
                   setIsMeterModalOpen(true);
                 }}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-ink hover:text-ink bg-hi-soft hover:bg-raise rounded-xl border border-ochre transition-colors"
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-ink hover:text-ink bg-hi-soft hover:bg-raise rounded-xl border border-ochre transition-colors disabled:opacity-40"
               >
                 <span>Въведи нови показания с 1 клик</span>
               </button>
@@ -400,13 +401,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </div>
 
                       <div className="flex items-center justify-between gap-2 pt-1">
-                        <a
-                          href="tel:+359885339988"
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-mat hover:bg-mat-deep rounded-lg transition-colors border border-mat/40"
-                        >
-                          <Phone className="w-3.5 h-3.5" />
-                          <span>Обади се на майстора</span>
-                        </a>
+                        {building.phoneManager ? (
+                          <a
+                            href={`tel:${building.phoneManager.replace(/\s/g, '')}`}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-mat hover:bg-mat-deep rounded-lg transition-colors border border-mat/40"
+                          >
+                            <Phone className="w-3.5 h-3.5" />
+                            <span>Свържи се с управителя</span>
+                          </a>
+                        ) : <span />}
                         <button
                           onClick={onOpenDiagnosisModal}
                           className="text-xs font-medium text-ink hover:text-ink"
@@ -437,23 +440,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl bg-film border border-line space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-ink">Бойлер Термопомпен 150L</span>
-                    <span className="text-[10px] text-stamp font-medium">Изправен</span>
-                  </div>
-                  <p className="text-[11px] text-ink">Мокро помещение · Гаранция до 2027 г.</p>
+              {appliances.length === 0 ? (
+                <p className="text-xs text-mute">Няма добавени уреди за този имот.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {appliances
+                    .filter((ap) => !ap.apartmentId || (tenantApt && ap.apartmentId === tenantApt.id))
+                    .slice(0, 4)
+                    .map((ap) => (
+                      <div key={ap.id} className="p-3 rounded-xl bg-film border border-line space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-ink truncate">{ap.name}</span>
+                          <span className="text-[10px] text-stamp font-medium shrink-0">
+                            {ap.status === 'operational' ? 'Изправен' : ap.status === 'needs_service' ? 'За сервиз' : 'Проблем'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-ink truncate">
+                          {ap.locationName}{ap.warrantyExpiryDate ? ` · Гаранция до ${ap.warrantyExpiryDate}` : ''}
+                        </p>
+                      </div>
+                    ))}
                 </div>
-
-                <div className="p-3 rounded-xl bg-film border border-line space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-ink">Климатична система</span>
-                    <span className="text-[10px] text-stamp font-medium">A+++</span>
-                  </div>
-                  <p className="text-[11px] text-ink">Дневна & Спалня · Филтри сменени</p>
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -467,30 +475,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </h3>
               </div>
               <p className="text-[11px] text-ink">
-                При спешен въпрос, теч или проблем в сградата кликнете за директно обаждане:
+                При спешен въпрос, теч или проблем в сградата се свържете директно:
               </p>
 
               <div className="space-y-2">
-                {/* Real contact of this building; demo-only phone numbers were removed */}
-                <a
-                  href={`tel:${building.phoneManager.replace(/\s/g, '')}`}
-                  className="flex items-center justify-between p-3 rounded-xl bg-film hover:bg-sheet border border-line transition-colors group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-hi-soft border border-ochre flex items-center justify-center text-ink">
-                      <Users className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-ink group-hover:text-mat transition-colors">
-                        Домоуправител ({building.contactManager})
+                {building.phoneManager ? (
+                  <a
+                    href={`tel:${building.phoneManager.replace(/\s/g, '')}`}
+                    className="flex items-center justify-between p-3 rounded-xl bg-film hover:bg-sheet border border-line transition-colors group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-hi-soft border border-ochre flex items-center justify-center text-ink">
+                        <Users className="w-4 h-4" />
                       </div>
-                      <div className="text-[11px] text-ink font-tech">{building.phoneManager}</div>
+                      <div>
+                        <div className="text-xs font-bold text-ink group-hover:text-mat transition-colors">
+                          Домоуправител ({building.contactManager || 'Управител'})
+                        </div>
+                        <div className="text-[11px] text-ink font-tech">{building.phoneManager}</div>
+                      </div>
                     </div>
+                    <span className="px-2.5 py-1 text-[11px] font-semibold text-white bg-mat rounded-lg">
+                      Обади се
+                    </span>
+                  </a>
+                ) : (
+                  <div className="p-3 rounded-xl bg-film border border-line text-xs text-mute">
+                    Домоуправител: {building.contactManager || 'Няма посочен телефон за контакт'}
                   </div>
-                  <span className="px-2.5 py-1 text-[11px] font-semibold text-white bg-mat rounded-lg">
-                    Обади се
-                  </span>
-                </a>
+                )}
               </div>
             </div>
 
@@ -541,7 +554,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     className="w-full px-3 py-2 bg-film border border-line rounded-lg text-ink font-tech focus:outline-none focus:border-mat"
                   />
                   <span className="text-[10px] text-ink/70 mt-0.5 block">
-                    Предишно показание: {tenantApt?.waterMeterReading || 118.6} m³
+                    Предишно показание: {tenantApt?.waterMeterReading ?? 0} m³
                   </span>
                 </div>
 
@@ -557,7 +570,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     className="w-full px-3 py-2 bg-film border border-line rounded-lg text-ink font-tech focus:outline-none focus:border-mat"
                   />
                   <span className="text-[10px] text-ink/70 mt-0.5 block">
-                    Предишно показание: {tenantApt?.electricMeterReading || 9840.3} kWh
+                    Предишно показание: {tenantApt?.electricMeterReading ?? 0} kWh
                   </span>
                 </div>
               </div>
@@ -738,12 +751,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
               <div>
                 <dt className="font-tech text-[12px] uppercase tracking-[0.05em] text-mute">Заети</dt>
-                <dd className="font-tech text-[22px] leading-tight text-ink">{building.occupiedApartments} от {building.totalApartments}</dd>
+                <dd className="font-tech text-[22px] leading-tight text-ink">
+                  {apartments.length > 0 ? apartments.filter((a) => a.status === 'occupied').length : building.occupiedApartments} от {apartments.length > 0 ? Math.max(building.totalApartments, apartments.length) : building.totalApartments}
+                </dd>
                 <Dim />
               </div>
               <div>
-                <dt className="font-tech text-[12px] uppercase tracking-[0.05em] text-mute">Събрано тоя месец</dt>
-                <dd className="font-tech text-[22px] leading-tight text-ink">{building.monthlyCollectionRate}%</dd>
+                <dt className="font-tech text-[12px] uppercase tracking-[0.05em] text-mute">Събрано</dt>
+                <dd className="font-tech text-[22px] leading-tight text-ink">
+                  {payments.length > 0
+                    ? Math.min(100, Math.round((totalCollected / Math.max(1, payments.reduce((s, p) => s + p.amount, 0))) * 100))
+                    : building.monthlyCollectionRate}%
+                </dd>
                 <Dim />
               </div>
               <div>

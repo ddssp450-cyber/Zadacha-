@@ -37,8 +37,8 @@ interface BuildingsViewProps {
   onDeleteBuilding: () => Promise<unknown>;
   onDeleteApartment: (id: string) => void;
   members: Member[];
-  onAddMember: (m: { email: string; role: UserProfile['role']; apartmentNumber?: string }) => Promise<unknown>;
-  onRemoveMember: (email: string) => Promise<unknown>;
+  onAddMember: (m: { name?: string; phone?: string; email?: string; role: UserProfile['role']; apartmentNumber?: string }) => Promise<unknown>;
+  onRemoveMember: (member: Member) => Promise<unknown>;
   onNavigateTab: (tab: string, highlightItemId?: string) => void;
 }
 
@@ -163,16 +163,20 @@ export const BuildingsView: React.FC<BuildingsViewProps> = ({
               <div className="text-[11px] font-semibold text-ink uppercase tracking-wider">
                 Удобства и инфраструктура:
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {building.facilities.map((fac, idx) => (
-                  <span
-                    key={idx}
-                    className="px-2 py-0.5 rounded-md bg-film text-ink text-[11px] border border-ochre"
-                  >
-                    {fac}
-                  </span>
-                ))}
-              </div>
+              {building.facilities.length === 0 ? (
+                <p className="text-mute text-[11px]">Няма добавени удобства.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {building.facilities.map((fac, idx) => (
+                    <span
+                      key={idx}
+                      className="px-2 py-0.5 rounded-md bg-film text-ink text-[11px] border border-ochre"
+                    >
+                      {fac}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="border-t border-line pt-3 flex items-center justify-between text-xs">

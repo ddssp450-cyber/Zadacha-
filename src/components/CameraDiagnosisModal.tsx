@@ -15,6 +15,8 @@ import {
   Check
 } from 'lucide-react';
 import { UserProfile, RepairTicket } from '../types';
+import { getAuthHeaders } from '../lib/firebase';
+import { fileToBoundedDataUrl } from './PhotoPicker';
 
 interface CameraDiagnosisModalProps {
   isOpen: boolean;
@@ -78,29 +80,31 @@ export const CameraDiagnosisModal: React.FC<CameraDiagnosisModalProps> = ({
 
   const captureWebcamSnapshot = () => {
     if (!videoRef.current) return;
+    const vw = videoRef.current.videoWidth || 640;
+    const vh = videoRef.current.videoHeight || 480;
+    const scale = Math.min(1, 960 / Math.max(vw, vh));
     const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth || 640;
-    canvas.height = videoRef.current.videoHeight || 480;
+    canvas.width = Math.round(vw * scale);
+    canvas.height = Math.round(vh * scale);
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
       setPhotoPreview(dataUrl);
       stopWebcam();
     }
   };
 
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setPhotoPreview(event.target.result as string);
-          setDiagnosis(null);
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        const bounded = await fileToBoundedDataUrl(file, 960, 220000);
+        setPhotoPreview(bounded);
+        setDiagnosis(null);
+      } catch {
+        setDiagnoseError('Неуспешно зареждане на снимката. Опитай JPG или PNG.');
+      }
     }
   };
 
@@ -111,9 +115,10 @@ export const CameraDiagnosisModal: React.FC<CameraDiagnosisModalProps> = ({
     setDiagnoseError(null);
 
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch('/api/ai/diagnose-damage', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           imageBase64: photoPreview,
           mimeType: 'image/jpeg',
@@ -173,7 +178,7 @@ export const CameraDiagnosisModal: React.FC<CameraDiagnosisModalProps> = ({
               <h3 className="text-sm font-bold text-ink flex items-center gap-2">
                 <span>Снимай повредата</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-hi/10 text-ochre border border-ochre/20 font-tech">
-                  Claude Vision
+                  Gemini Vision
                 </span>
               </h3>
               <p className="text-[11px] text-mute">
