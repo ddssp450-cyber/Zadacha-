@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { CalendarEvent, EventCategory, UserRole, UserProfile } from '../types';
 import { DeleteButton } from './PhotoPicker';
-import { getAuthHeaders } from '../lib/firebase';
+import { getAuthHeaders } from '../lib/apiClient';
 
 interface CalendarViewProps {
   currentUser: UserProfile;
@@ -53,6 +53,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const [aiCommandInput, setAiCommandInput] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiProposal, setAiProposal] = useState<any | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // New Event Form State
   const [newTitle, setNewTitle] = useState('');
@@ -119,6 +120,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     if (!aiCommandInput.trim()) return;
     setIsAiProcessing(true);
     setAiProposal(null);
+    setAiError(null);
 
     try {
       const headers = await getAuthHeaders();
@@ -127,12 +129,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         headers,
         body: JSON.stringify({ command: aiCommandInput }),
       });
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.proposal) {
         setAiProposal(data.proposal);
+      } else {
+        setAiError(data?.error || 'AI не успя да разчете командата.');
       }
     } catch (err) {
       console.error(err);
+      setAiError('Няма връзка със сървъра. Пробвай пак.');
     } finally {
       setIsAiProcessing(false);
     }
@@ -261,6 +266,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             <span>{isAiProcessing ? 'Анализиране...' : 'Планирай с AI'}</span>
           </button>
         </div>
+
+        {aiError && (
+          <p role="alert" className="text-xs text-red bg-red-soft border border-red/30 rounded-lg px-3 py-2">
+            {aiError}
+          </p>
+        )}
 
         {/* AI Proposal Card with Conflict check & Confirmation */}
         {aiProposal && (

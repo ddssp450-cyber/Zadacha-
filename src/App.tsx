@@ -3,9 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { onAuthStateChanged, sendEmailVerification, signOut, User as FirebaseUser } from 'firebase/auth';
-import { Mail, RefreshCw } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, LogOut, RefreshCw } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { DashboardView } from './components/DashboardView';
 import { BuildingsView } from './components/BuildingsView';
@@ -32,31 +31,31 @@ import {
   Appliance,
 } from './types';
 
-import { ADMIN_EMAIL, auth } from './lib/firebase';
+import {
+  AppAuthUser,
+  logoutSession,
+  refreshSession,
+  subscribeAuth,
+} from './lib/apiClient';
 import {
   BuildingMeta,
   InviteRecord,
   MemberRecord,
   addBuildingMember,
-  addExpenseAtomic,
   claimInvitesByIdentifier,
   claimPendingInvites,
-  confirmPaymentAtomic,
-  createBuildingInFirestore,
+  createBuildingInDb,
+  createSubdoc,
   deleteBuildingCascade,
-  deleteExpenseAtomic,
   deleteSubdoc,
-  ensureUserDoc,
+  fetchBuildingData,
+  fetchUserBuildings,
   makeId,
   removeBuildingMember,
-  saveSubdoc,
-  subscribeBuildingData,
-  subscribeUserBuildings,
-  syncOwnerAclsIfNeeded,
   updateActiveBuilding,
   updateBuildingDetails,
   updateSubdocFields,
-} from './lib/firestoreStore';
+} from './lib/dataStore';
 
 function diffEditableFields<T extends Record<string, any>>(prev: T | undefined, next: T): Record<string, any> {
   const immutable = new Set(['id', 'buildingId', 'ownerId', 'createdByUid', 'memberUids', 'invitedEmails', 'createdAt', 'updatedAt']);
@@ -71,14 +70,11 @@ function diffEditableFields<T extends Record<string, any>>(prev: T | undefined, 
 }
 
 export default function App() {
-  const [status, setStatus] = useState<'loading' | 'ready' | 'signedOut' | 'needsVerification'>('loading');
+  const [status, setStatus] = useState<'loading' | 'ready' | 'signedOut'>('loading');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [verifyFeedback, setVerifyFeedback] = useState<string | null>(null);
-  const [verifyBusy, setVerifyBusy] = useState(false);
 
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [userProfileBase, setUserProfileBase] = useState<{ name: string; phone: string; avatarUrl: string; activeBuildingId?: string } | null>(null);
+  const [authUser, setAuthUser] = useState<AppAuthUser | null>(null);
   const [preferredBuildingId, setPreferredBuildingId] = useState<string>('');
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -103,115 +99,84 @@ export default function App() {
   const [isExternalNewTicketOpen, setIsExternalNewTicketOpen] = useState(false);
   const [isExternalNewEventOpen, setIsExternalNewEventOpen] = useState(false);
 
-  const bootstrapVerifiedUser = async (
-    fbUser: FirebaseUser,
-    setUnsubBuildings: (fn: () => void) => void
-  ) => {
-    setStatus('loading');
+  const clearBuildingState = useCallback(() => {
+    setBuildings([]);
+    setMembersRaw([]);
+    setInvitesRaw([]);
+    setApartments([]);
+    setPayments([]);
+    setAppliances([]);
+    setRepairTickets([]);
+    setDefects([]);
+    setCalendarEvents([]);
+    setExpenses([]);
+  }, []);
+
+  const loadBuildingsForUser = useCallback(async (user: AppAuthUser) => {
     setLoadError(null);
-
-    let pendingPhone = '';
     try {
-      pendingPhone = sessionStorage.getItem('bb_pending_phone') || '';
-    } catch {
-      // Ignore storage access errors
-    }
-
-    try {
-      const uDoc = await ensureUserDoc(fbUser, pendingPhone ? { phone: pendingPhone } : undefined);
-      if (pendingPhone) {
-        try {
-          sessionStorage.removeItem('bb_pending_phone');
-        } catch {
-          // Ignore
-        }
+      const list = await fetchUserBuildings();
+      setBuildings(list);
+      if (user.activeBuildingId && list.some((b) => b.id === user.activeBuildingId)) {
+        setPreferredBuildingId(user.activeBuildingId);
+      } else if (list.length > 0) {
+        setPreferredBuildingId((prev) => (prev && list.some((b) => b.id === prev) ? prev : list[0].id));
+      } else {
+        setPreferredBuildingId('');
       }
-
-      const claimedId = await claimPendingInvites(fbUser);
-      setUserProfileBase({
-        name: uDoc.name,
-        phone: uDoc.phone,
-        avatarUrl: uDoc.avatarUrl,
-        activeBuildingId: claimedId || uDoc.activeBuildingId,
-      });
-      if (claimedId || uDoc.activeBuildingId) {
-        setPreferredBuildingId(claimedId || uDoc.activeBuildingId || '');
-      }
-
-      const unsub = subscribeUserBuildings(fbUser.uid, (list) => {
-        setBuildings(list);
-        setStatus('ready');
-      });
-      setUnsubBuildings(unsub);
+      setStatus('ready');
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Грешка при свързване с базата данни.');
+      setLoadError(err instanceof Error ? err.message : 'Грешка при свързване със сървъра.');
       setStatus('ready');
     }
-  };
+  }, []);
 
-  // Watch Firebase Auth state & subscribe to user's buildings
   useEffect(() => {
-    let unsubBuildings: (() => void) | null = null;
-
-    const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
-      if (unsubBuildings) {
-        unsubBuildings();
-        unsubBuildings = null;
-      }
-
-      if (!fbUser) {
-        setFirebaseUser(null);
-        setUserProfileBase(null);
-        setBuildings([]);
-        setMembersRaw([]);
-        setInvitesRaw([]);
-        setApartments([]);
-        setPayments([]);
-        setAppliances([]);
-        setRepairTickets([]);
-        setDefects([]);
-        setCalendarEvents([]);
-        setExpenses([]);
+    const unsub = subscribeAuth((user) => {
+      if (!user) {
+        setAuthUser(null);
+        setPreferredBuildingId('');
+        clearBuildingState();
+        setLoadError(null);
         setStatus('signedOut');
         return;
       }
-
-      setFirebaseUser(fbUser);
-
-      // Email/Password users must verify their email before creating buildings or reading email invites
-      if (!fbUser.isAnonymous && !fbUser.emailVerified) {
-        setVerifyFeedback(null);
-        setStatus('needsVerification');
-        return;
-      }
-
-      await bootstrapVerifiedUser(fbUser, (fn) => {
-        unsubBuildings = fn;
-      });
+      setAuthUser(user);
+      setStatus('loading');
+      loadBuildingsForUser(user);
     });
 
-    return () => {
-      unsubAuth();
-      if (unsubBuildings) unsubBuildings();
-    };
-  }, []);
+    refreshSession();
+    return unsub;
+  }, [clearBuildingState, loadBuildingsForUser]);
 
-  const isAdmin = Boolean(
-    firebaseUser &&
-      !firebaseUser.isAnonymous &&
-      firebaseUser.emailVerified &&
-      firebaseUser.email &&
-      firebaseUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()
-  );
+  const isAdmin = Boolean(authUser?.isAdmin);
 
   const building = useMemo<BuildingMeta | null>(() => {
     if (buildings.length === 0) return null;
     return buildings.find((b) => b.id === preferredBuildingId) || buildings[0];
   }, [buildings, preferredBuildingId]);
 
-  // Subscribe to subcollections of the active building
+  const syncActiveBuilding = useCallback(async (buildingId: string) => {
+    try {
+      const bundle = await fetchBuildingData(buildingId);
+      setBuildings((prev) => prev.map((b) => (b.id === bundle.building.id ? bundle.building : b)));
+      setMembersRaw(bundle.members || []);
+      setInvitesRaw(bundle.invites || []);
+      setApartments(bundle.apartments || []);
+      setPayments(bundle.payments || []);
+      setAppliances(bundle.appliances || []);
+      setRepairTickets(bundle.repairTickets || []);
+      setDefects(bundle.defects || []);
+      setCalendarEvents(bundle.calendarEvents || []);
+      setExpenses(bundle.expenses || []);
+    } catch (err) {
+      console.error('Building sync error:', err);
+    }
+  }, []);
+
   useEffect(() => {
-    if (!firebaseUser || !building || status !== 'ready') {
+    if (!authUser || !building || status !== 'ready') {
       setMembersRaw([]);
       setInvitesRaw([]);
       setApartments([]);
@@ -224,39 +189,24 @@ export default function App() {
       return;
     }
 
-    return subscribeBuildingData(building, firebaseUser.uid, isAdmin, {
-      onMembers: setMembersRaw,
-      onInvites: setInvitesRaw,
-      onApartments: (list) => setApartments([...list].sort((a, b) => Number(a.number) - Number(b.number))),
-      onPayments: setPayments,
-      onAppliances: setAppliances,
-      onRepairTickets: setRepairTickets,
-      onDefects: setDefects,
-      onCalendarEvents: setCalendarEvents,
-      onExpenses: setExpenses,
-    });
-  }, [firebaseUser?.uid, building?.id, isAdmin, status]);
+    syncActiveBuilding(building.id);
 
-  // Keep owner subcollection ACLs aligned if a member created a ticket/defect/event
-  useEffect(() => {
-    if (!firebaseUser || !building || building.ownerId !== firebaseUser.uid) return;
-    if (membersRaw.length === 0 && invitesRaw.length === 0) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        syncActiveBuilding(building.id);
+      }
+    }, 10000);
 
-    const timer = setTimeout(() => {
-      syncOwnerAclsIfNeeded(building, membersRaw, invitesRaw, 'repairTickets', repairTickets).catch(() => {});
-      syncOwnerAclsIfNeeded(building, membersRaw, invitesRaw, 'defects', defects).catch(() => {});
-      syncOwnerAclsIfNeeded(building, membersRaw, invitesRaw, 'calendarEvents', calendarEvents).catch(() => {});
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [building?.id, firebaseUser?.uid, membersRaw, invitesRaw, repairTickets, defects, calendarEvents]);
+    return () => window.clearInterval(timer);
+  }, [authUser?.id, building?.id, status, syncActiveBuilding]);
 
   const currentUser = useMemo<UserProfile | null>(() => {
-    if (!firebaseUser || !userProfileBase) return null;
-    const myMember = membersRaw.find((m) => m.uid === firebaseUser.uid);
+    if (!authUser) return null;
+    const myMember = membersRaw.find((m) => m.uid === authUser.id);
     const role: UserRole =
-      building && building.ownerId === firebaseUser.uid
+      building && building.ownerId === authUser.id
         ? 'owner'
-        : myMember?.role || (firebaseUser.isAnonymous ? 'tenant' : 'owner');
+        : myMember?.role || (authUser.isAnonymous ? 'tenant' : 'owner');
     const apartmentNumber = myMember?.apartmentNumber || undefined;
 
     let roleTitle = 'Собственик & Управител на Етажна Собственост';
@@ -265,24 +215,22 @@ export default function App() {
     else if (role === 'craftsman') roleTitle = 'Техник / Майстор';
 
     return {
-      id: firebaseUser.uid,
-      name: userProfileBase.name || firebaseUser.displayName || firebaseUser.email || 'Потребител',
-      email: firebaseUser.isAnonymous ? '' : (firebaseUser.email || ''),
-      phone: userProfileBase.phone || '',
+      id: authUser.id,
+      name: authUser.name || authUser.email || 'Потребител',
+      email: authUser.isAnonymous ? '' : authUser.email || '',
+      phone: authUser.phone || '',
       role,
       roleTitle,
       apartmentNumber,
       buildingId: building?.id || '',
-      avatarUrl: userProfileBase.avatarUrl || firebaseUser.photoURL || '',
+      avatarUrl: authUser.avatarUrl || '',
     };
-  }, [firebaseUser, userProfileBase, building, membersRaw]);
+  }, [authUser, building, membersRaw]);
 
-  // Deduplicate active members + invites by inviteId so multi-device claims don't create duplicate rows
   const members = useMemo<Member[]>(() => {
     const result: Member[] = [];
     const consumedMemberUids = new Set<string>();
 
-    // Owner and non-invite direct members
     for (const m of membersRaw) {
       if (m.role === 'owner' || !m.inviteId) {
         if (m.uid) consumedMemberUids.add(m.uid);
@@ -299,7 +247,6 @@ export default function App() {
       }
     }
 
-    // Invites (either waiting or already claimed by one or more UIDs)
     for (const inv of invitesRaw) {
       const matched = membersRaw.filter(
         (m) =>
@@ -321,7 +268,6 @@ export default function App() {
       });
     }
 
-    // Any remaining members whose invite was deleted or not returned
     for (const m of membersRaw) {
       if (m.uid && consumedMemberUids.has(m.uid)) continue;
       result.push({
@@ -340,25 +286,33 @@ export default function App() {
   }, [membersRaw, invitesRaw]);
 
   const canCreateBuildings =
-    Boolean(firebaseUser && !firebaseUser.isAnonymous) &&
+    Boolean(authUser && !authUser.isAnonymous) &&
     (!building || currentUser?.role === 'owner' || isAdmin);
 
-  const persistCall = (call: Promise<unknown>) =>
-    call.catch((err) => {
-      console.error(err);
-      setSaveError('Последната промяна не беше записана. Провери връзката или правата си и опитай пак.');
-    });
+  const persistCall = (call: Promise<unknown>, refreshAfter = false) =>
+    call
+      .then(() => {
+        if (refreshAfter && building) {
+          return syncActiveBuilding(building.id);
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        setSaveError(err instanceof Error ? err.message : 'Последната промяна не беше записана.');
+        if (building) syncActiveBuilding(building.id);
+      });
 
   const handleLogout = () => {
-    signOut(auth).catch((err) => console.error(err));
+    logoutSession().catch((err) => console.error(err));
   };
 
   const handleRecheckInvites = async () => {
-    if (!firebaseUser) return;
+    if (!authUser) return;
     try {
-      const claimed = await claimPendingInvites(firebaseUser);
-      if (claimed) {
-        setPreferredBuildingId(claimed);
+      const claimed = await claimPendingInvites();
+      await loadBuildingsForUser(authUser);
+      if (claimed[0]) {
+        setPreferredBuildingId(claimed[0]);
       }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Грешка при проверка на покани.');
@@ -366,9 +320,10 @@ export default function App() {
   };
 
   const handleClaimByIdentifier = async (identifier: string): Promise<number> => {
-    if (!firebaseUser) return 0;
-    const { claimedBuildingIds } = await claimInvitesByIdentifier(firebaseUser, identifier);
+    if (!authUser) return 0;
+    const claimedBuildingIds = await claimInvitesByIdentifier(identifier);
     if (claimedBuildingIds.length > 0) {
+      await loadBuildingsForUser(authUser);
       setPreferredBuildingId(claimedBuildingIds[0]);
       setCurrentTab('dashboard');
     }
@@ -397,22 +352,18 @@ export default function App() {
       prev?.status !== 'confirmed_paid' && updated.status === 'confirmed_paid' && updated.type === 'repair_fund'
         ? Number(updated.paidAmount ?? updated.amount) || 0
         : 0;
-    if (reserveIncrement > 0) {
-      persistCall(confirmPaymentAtomic(building, updated.id, patch, reserveIncrement));
-    } else {
-      persistCall(updateSubdocFields('payments', building.id, updated.id, patch));
-    }
+    persistCall(updateSubdocFields('payments', building.id, updated.id, patch, reserveIncrement), reserveIncrement > 0);
   };
 
   const handleCreatePayment = (newP: Omit<PaymentObligation, 'id'>) => {
-    if (!building || !firebaseUser) return;
+    if (!building) return;
     const created: PaymentObligation = {
       ...newP,
       buildingId: building.id,
       id: makeId('pay'),
     };
     setPayments((list) => [created, ...list]);
-    persistCall(saveSubdoc('payments', created, building, membersRaw, invitesRaw, firebaseUser.uid, true));
+    persistCall(createSubdoc('payments', building.id, created));
   };
 
   // Repair operations
@@ -429,7 +380,7 @@ export default function App() {
   };
 
   const handleCreateTicket = (newT: Omit<RepairTicket, 'id' | 'ticketNumber'>) => {
-    if (!building || !firebaseUser) return;
+    if (!building) return;
     const count = repairTickets.length + 1;
     const ticketNumber = `REM-${new Date().getFullYear()}-0${count < 10 ? '0' + count : count}`;
     const created: RepairTicket = {
@@ -439,7 +390,7 @@ export default function App() {
       ticketNumber,
     };
     setRepairTickets((list) => [created, ...list]);
-    persistCall(saveSubdoc('repairTickets', created, building, membersRaw, invitesRaw, firebaseUser.uid, true));
+    persistCall(createSubdoc('repairTickets', building.id, created));
 
     if (currentUser?.role === 'tenant') return;
     const newEvent: CalendarEvent = {
@@ -457,7 +408,7 @@ export default function App() {
       priority: created.priority === 'urgent' ? 'urgent' : 'high',
     };
     setCalendarEvents((list) => [newEvent, ...list]);
-    persistCall(saveSubdoc('calendarEvents', newEvent, building, membersRaw, invitesRaw, firebaseUser.uid, true));
+    persistCall(createSubdoc('calendarEvents', building.id, newEvent));
   };
 
   // Defect operations
@@ -471,7 +422,7 @@ export default function App() {
   };
 
   const handleCreateDefect = (newD: Omit<ConstructionDefect, 'id' | 'defectNumber'>) => {
-    if (!building || !firebaseUser) return;
+    if (!building) return;
     const count = defects.length + 1;
     const created: ConstructionDefect = {
       ...newD,
@@ -480,19 +431,19 @@ export default function App() {
       defectNumber: `DEF-${new Date().getFullYear()}-0${count < 10 ? '0' + count : count}`,
     };
     setDefects((list) => [created, ...list]);
-    persistCall(saveSubdoc('defects', created, building, membersRaw, invitesRaw, firebaseUser.uid, true));
+    persistCall(createSubdoc('defects', building.id, created));
   };
 
   // Calendar operations
   const handleCreateEvent = (newEventData: Omit<CalendarEvent, 'id'>) => {
-    if (!building || !firebaseUser) return;
+    if (!building) return;
     const created: CalendarEvent = {
       ...newEventData,
       buildingId: building.id,
       id: makeId('evt'),
     };
     setCalendarEvents((list) => [created, ...list]);
-    persistCall(saveSubdoc('calendarEvents', created, building, membersRaw, invitesRaw, firebaseUser.uid, true));
+    persistCall(createSubdoc('calendarEvents', building.id, created));
   };
 
   const handleUpdateEventStatus = (eventId: string, newStatus: CalendarEvent['status']) => {
@@ -521,21 +472,27 @@ export default function App() {
   };
 
   const handleSaveApartment = (apt: Apartment) => {
-    if (!building || !firebaseUser) return;
+    if (!building) return;
     const existing = apartments.find((a) => a.id === apt.id);
     const normalized: Apartment = { ...apt, buildingId: building.id };
     if (existing) {
       handleUpdateApartment(normalized);
     } else {
       setApartments((list) => [...list, normalized]);
-      persistCall(saveSubdoc('apartments', normalized, building, membersRaw, invitesRaw, firebaseUser.uid, true));
+      persistCall(createSubdoc('apartments', building.id, normalized));
     }
   };
 
-  // Expense operations (atomic balance adjustment)
+  // Expense operations
   const handleAddExpense = (newExp: Omit<ExpenseRecord, 'id'>) => {
-    if (!building || !firebaseUser) return;
-    persistCall(addExpenseAtomic(newExp, building, firebaseUser.uid));
+    if (!building) return;
+    const created: ExpenseRecord = {
+      ...newExp,
+      buildingId: building.id,
+      id: makeId('exp'),
+    };
+    setExpenses((list) => [created, ...list]);
+    persistCall(createSubdoc('expenses', building.id, created), true);
   };
 
   const handleApproveExpense = (expenseId: string) => {
@@ -571,132 +528,74 @@ export default function App() {
 
   // Building & membership operations
   const handleCreateBuilding = async (fields: BuildingFields) => {
-    if (!firebaseUser) return;
-    const newId = await createBuildingInFirestore(firebaseUser, fields);
-    setPreferredBuildingId(newId);
+    const created = await createBuildingInDb(fields);
+    setBuildings((prev) => [created, ...prev]);
+    setPreferredBuildingId(created.id);
     setCurrentTab('buildings');
   };
 
   const handleUpdateBuilding = async (fields: BuildingFields) => {
     if (!building) return;
-    await updateBuildingDetails(building, fields);
+    const updated = await updateBuildingDetails(building.id, fields);
+    setBuildings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
   };
 
   const handleUpdateBankDetails = async (fields: { iban: string; bankName: string; contactManager: string }) => {
     if (!building) return;
-    await updateBuildingDetails(building, fields);
+    const updated = await updateBuildingDetails(building.id, fields);
+    setBuildings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
   };
 
   const handleUpdateReserveBalance = async (newBalance: number) => {
     if (!building) return;
-    await updateBuildingDetails(building, { reserveFundBalance: newBalance });
+    const updated = await updateBuildingDetails(building.id, { reserveFundBalance: newBalance });
+    setBuildings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
   };
 
   const handleSwitchBuilding = (buildingId: string) => {
     setPreferredBuildingId(buildingId);
     setCurrentTab('dashboard');
-    if (firebaseUser) {
-      persistCall(updateActiveBuilding(firebaseUser.uid, buildingId));
-    }
+    persistCall(updateActiveBuilding(buildingId));
   };
 
-  const handleAddMember = (m: { name?: string; phone?: string; email?: string; role: UserProfile['role']; apartmentNumber?: string }) => {
-    if (!building) return Promise.resolve();
-    return addBuildingMember(building, membersRaw, invitesRaw, m);
+  const handleAddMember = async (m: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    role: UserProfile['role'];
+    apartmentNumber?: string;
+  }) => {
+    if (!building) return;
+    await addBuildingMember(building.id, m);
+    await syncActiveBuilding(building.id);
   };
 
-  const handleRemoveMember = (member: Member) => {
-    if (!building) return Promise.resolve();
-    return removeBuildingMember(building, member, invitesRaw);
+  const handleRemoveMember = async (member: Member) => {
+    if (!building) return;
+    await removeBuildingMember(building.id, member);
+    await syncActiveBuilding(building.id);
   };
 
   const deleteRecord = (subcol: string, id: string) => {
     if (!building) return;
-    if (subcol === 'expenses') {
-      const exp = expenses.find((e) => e.id === id);
-      if (exp) persistCall(deleteExpenseAtomic(exp, building));
-      return;
-    }
-    persistCall(deleteSubdoc(subcol, building.id, id));
+    if (subcol === 'payments') setPayments((l) => l.filter((x) => x.id !== id));
+    if (subcol === 'apartments') setApartments((l) => l.filter((x) => x.id !== id));
+    if (subcol === 'repairTickets') setRepairTickets((l) => l.filter((x) => x.id !== id));
+    if (subcol === 'defects') setDefects((l) => l.filter((x) => x.id !== id));
+    if (subcol === 'calendarEvents') setCalendarEvents((l) => l.filter((x) => x.id !== id));
+    if (subcol === 'expenses') setExpenses((l) => l.filter((x) => x.id !== id));
+    persistCall(deleteSubdoc(subcol, building.id, id), subcol === 'expenses');
   };
 
   const handleDeleteBuilding = async () => {
     if (!building) return;
-    await deleteBuildingCascade(building.id);
-    setPreferredBuildingId('');
+    const deletedId = building.id;
+    await deleteBuildingCascade(deletedId);
+    const remaining = buildings.filter((b) => b.id !== deletedId);
+    setBuildings(remaining);
+    setPreferredBuildingId(remaining[0]?.id || '');
     setCurrentTab('dashboard');
   };
-
-  if (status === 'needsVerification' && firebaseUser) {
-    return (
-      <div className="min-h-screen bg-film text-ink flex items-center justify-center font-sans text-sm px-4">
-        <div className="max-w-md w-full rounded-2xl border border-line bg-sheet p-6 space-y-4 text-xs">
-          <div className="flex items-center gap-2 text-base font-bold text-ink">
-            <Mail className="w-5 h-5 text-mat" />
-            <span>Потвърди своя имейл адрес</span>
-          </div>
-          <p className="text-ink leading-relaxed">
-            Изпратихме линк за потвърждение на <b>{firebaseUser.email}</b>. Отвори пощата си, кликни върху линка и след това натисни бутона по-долу.
-          </p>
-          {verifyFeedback && (
-            <p className="p-2.5 rounded-lg bg-raise border border-rule text-ink">{verifyFeedback}</p>
-          )}
-          <div className="flex flex-wrap gap-2.5">
-            <button
-              type="button"
-              disabled={verifyBusy}
-              onClick={async () => {
-                setVerifyBusy(true);
-                setVerifyFeedback(null);
-                try {
-                  await firebaseUser.reload();
-                  const refreshed = auth.currentUser;
-                  if (refreshed?.emailVerified) {
-                    await refreshed.getIdToken(true);
-                    window.location.reload();
-                  } else {
-                    setVerifyFeedback('Имейлът все още не е потвърден. Провери входящата поща и папка Спам.');
-                  }
-                } catch (err) {
-                  setVerifyFeedback(err instanceof Error ? err.message : 'Грешка при проверка.');
-                } finally {
-                  setVerifyBusy(false);
-                }
-              }}
-              className="px-4 py-2 font-semibold text-white bg-mat hover:bg-mat-deep rounded-lg inline-flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>{verifyBusy ? 'Проверка…' : 'Потвърдих имейла — продължи'}</span>
-            </button>
-            <button
-              type="button"
-              disabled={verifyBusy}
-              onClick={async () => {
-                setVerifyBusy(true);
-                setVerifyFeedback(null);
-                try {
-                  await sendEmailVerification(firebaseUser);
-                  setVerifyFeedback('Изпратихме нов линк за потвърждение.');
-                } catch (err) {
-                  setVerifyFeedback(err instanceof Error ? err.message : 'Изчакай малко преди ново изпращане.');
-                } finally {
-                  setVerifyBusy(false);
-                }
-              }}
-              className="px-3 py-2 text-mat hover:text-ink font-medium"
-            >
-              Изпрати линка отново
-            </button>
-          </div>
-          <div className="pt-2 border-t border-line">
-            <button onClick={handleLogout} className="text-mute hover:text-ink">
-              Изход от профила
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (status !== 'ready' || !currentUser || !building) {
     return (
@@ -706,22 +605,52 @@ export default function App() {
             <AccessGate
               name={currentUser.name}
               email={currentUser.email}
-              isAnonymous={firebaseUser?.isAnonymous}
-              onCreateBuilding={!firebaseUser?.isAnonymous ? handleCreateBuilding : undefined}
+              isAnonymous={authUser?.isAnonymous}
+              onCreateBuilding={!authUser?.isAnonymous ? handleCreateBuilding : undefined}
               onClaimByIdentifier={handleClaimByIdentifier}
               onRecheck={handleRecheckInvites}
               onLogout={handleLogout}
             />
-            {isAdmin && <div className="w-full"><AdminView currentUserId={currentUser.id} /></div>}
+            {isAdmin && (
+              <div className="w-full">
+                <AdminView
+                  currentUserId={currentUser.id}
+                  onChanged={() => {
+                    if (authUser) loadBuildingsForUser(authUser);
+                  }}
+                />
+              </div>
+            )}
           </div>
         ) : status === 'signedOut' ? (
           <AuthModal />
         ) : loadError ? (
-          <div className="text-center space-y-3 p-6">
-            <p>{loadError}</p>
-            <button onClick={() => window.location.reload()} className="text-mat hover:text-ink font-semibold">
-              Опитай пак
-            </button>
+          <div className="max-w-lg w-full mx-4 rounded-2xl border border-line bg-sheet p-6 space-y-4 text-xs">
+            <div className="flex items-start gap-2.5 text-red">
+              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h2 className="text-sm font-bold text-ink">Грешка при зареждане на данните</h2>
+                <p className="text-ink leading-relaxed">{loadError}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => authUser && loadBuildingsForUser(authUser)}
+                className="px-4 py-2 font-semibold text-white bg-mat hover:bg-mat-deep rounded-lg inline-flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Опитай пак</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="px-3 py-2 text-mute hover:text-ink inline-flex items-center gap-1.5"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Изход от профила</span>
+              </button>
+            </div>
           </div>
         ) : (
           <p className="text-mute">Зареждане…</p>
@@ -876,7 +805,14 @@ export default function App() {
           />
         )}
 
-        {currentTab === 'admin' && isAdmin && <AdminView currentUserId={currentUser.id} />}
+        {currentTab === 'admin' && isAdmin && (
+          <AdminView
+            currentUserId={currentUser.id}
+            onChanged={() => {
+              if (authUser) loadBuildingsForUser(authUser);
+            }}
+          />
+        )}
       </main>
 
       <div className="fixed bottom-6 right-6 z-40">

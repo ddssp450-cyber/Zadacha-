@@ -12,7 +12,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { ChatMessage, UserProfile, Building, PaymentObligation, RepairTicket, CalendarEvent } from '../types';
-import { getAuthHeaders } from '../lib/firebase';
+import { getAuthHeaders } from '../lib/apiClient';
 
 interface AIAssistantModalProps {
   isOpen: boolean;
@@ -145,7 +145,11 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         }),
       });
 
-      if (!res.ok || !res.body) throw new Error('API error');
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.error || 'Асистентът върна грешка.');
+      }
+      if (!res.body) throw new Error('Липсва отговор от сървъра.');
 
       // The reply streams in as plain text; the bubble appears with the first chunk and grows.
       const assistantId = `msg-${Date.now() + 1}`;
@@ -171,16 +175,19 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
               ]
         );
       }
-      if (!reply) throw new Error('Empty reply');
+      if (!reply) throw new Error('Асистентът не върна отговор.');
     } catch (err) {
       console.error(err);
-      // Resilient Bulgarian fallback
+      const msg =
+        err instanceof Error && err.message && err.message !== 'Failed to fetch'
+          ? err.message
+          : 'Асистентът не отговаря в момента. Данните ти са си тук — пробвай пак след малко.';
       setMessages((prev) => [
         ...prev,
         {
           id: `msg-${Date.now() + 1}`,
           sender: 'assistant',
-          text: 'Асистентът не отговаря в момента. Данните ти са си тук — пробвай пак след малко.',
+          text: msg,
           timestamp: 'сега',
         },
       ]);

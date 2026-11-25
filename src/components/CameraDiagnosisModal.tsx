@@ -15,7 +15,7 @@ import {
   Check
 } from 'lucide-react';
 import { UserProfile, RepairTicket } from '../types';
-import { getAuthHeaders } from '../lib/firebase';
+import { getAuthHeaders } from '../lib/apiClient';
 import { fileToBoundedDataUrl } from './PhotoPicker';
 
 interface CameraDiagnosisModalProps {

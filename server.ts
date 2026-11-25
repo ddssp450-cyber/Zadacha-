@@ -1,47 +1,24 @@
-import express, { type Request, type Response, type NextFunction } from 'express';
+import express, { type Request, type Response } from 'express';
 import dotenv from 'dotenv';
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
-import { initializeApp, getApps, getApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
+import { apiRouter, requireAuth } from './server/routes.ts';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const firebaseConfig = JSON.parse(
-  fs.readFileSync(path.resolve(__dirname, 'firebase-applet-config.json'), 'utf8')
-);
-
-const adminApp = getApps().length
-  ? getApp()
-  : initializeApp({ projectId: firebaseConfig.projectId });
-const adminAuth = getAuth(adminApp);
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.resolve(__dirname, 'public')));
 
-async function requireFirebaseAuth(req: Request, res: Response, next: NextFunction) {
-  const header = req.headers.authorization || '';
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match) {
-    return res.status(401).json({ error: 'Нужен е вход с профил, за да използваш AI асистента.' });
-  }
-  try {
-    await adminAuth.verifyIdToken(match[1]);
-    return next();
-  } catch {
-    return res.status(401).json({ error: 'Невалидна или изтекла сесия. Влез отново.' });
-  }
-}
-
-app.use('/api/ai', requireFirebaseAuth);
+app.use('/api/ai', requireAuth);
+app.use('/api', apiRouter);
 
 // Initialize Gemini client on server
 const apiKey = process.env.GEMINI_API_KEY;
@@ -68,6 +45,32 @@ const isTransientOrQuota = (err: any) => {
   const status = err?.status;
   return status === 429 || status === 503 || status === 500;
 };
+
+function formatGeminiError(err: any, fallback: string): { status: number; message: string } {
+  const status = Number(err?.status) || 500;
+  const raw = String(err?.message || '');
+  if (
+    status === 401 ||
+    status === 403 ||
+    raw.includes('ACCOUNT_STATE_INVALID') ||
+    raw.includes('API_KEY_INVALID') ||
+    raw.includes('PERMISSION_DENIED') ||
+    raw.includes('UNAUTHENTICATED')
+  ) {
+    return {
+      status,
+      message:
+        'Ключът за Gemini API е невалиден или обвързаният акаунт е деактивиран. Обнови GEMINI_API_KEY в Settings > Secrets и опитай пак.',
+    };
+  }
+  if (status === 429 || raw.includes('RESOURCE_EXHAUSTED')) {
+    return {
+      status: 429,
+      message: 'Достигнат е лимитът на заявките към Gemini API. Изчакай малко или провери квотата на ключа.',
+    };
+  }
+  return { status, message: raw && !raw.startsWith('{') ? raw : fallback };
+}
 
 async function callWithRetryAndFallback<T>(fn: (model: string) => Promise<T>): Promise<T> {
   try {
@@ -214,7 +217,8 @@ ${JSON.stringify(contextData || {}, null, 2)}
     return res.end();
   } catch (error: any) {
     console.error('AI chat endpoint error:', error);
-    return res.status(error?.status || 500).json({ error: error?.message || 'Нещо се обърка от моя страна. Пробвай пак.' });
+    const formatted = formatGeminiError(error, 'Нещо се обърка от моя страна. Пробвай пак.');
+    return res.status(formatted.status).json({ error: formatted.message });
   }
 });
 
@@ -257,7 +261,8 @@ app.post('/api/ai/extract-receipt', async (req: Request, res: Response) => {
     return res.json({ success: true, extractedData: parseJson(response.text) });
   } catch (err: any) {
     console.warn('Receipt extraction failed:', err?.message || err);
-    return res.status(err?.status || 500).json({ success: false, error: err?.message || 'Грешка при разчитане на документа.' });
+    const formatted = formatGeminiError(err, 'Грешка при разчитане на документа.');
+    return res.status(formatted.status).json({ success: false, error: formatted.message });
   }
 });
 
@@ -322,7 +327,8 @@ app.post('/api/ai/diagnose-damage', async (req: Request, res: Response) => {
     return res.status(503).json({ error: 'AI не успя да разгледа снимката. Пробвай пак или опиши повредата ръчно.' });
   } catch (err: any) {
     console.error('Diagnosis error:', err);
-    return res.status(err?.status || 500).json({ error: err?.message || 'Грешка при диагностициране на снимката.' });
+    const formatted = formatGeminiError(err, 'Грешка при диагностициране на снимката.');
+    return res.status(formatted.status).json({ error: formatted.message });
   }
 });
 
@@ -374,7 +380,8 @@ app.post('/api/ai/parse-calendar-command', async (req: Request, res: Response) =
     return res.json({ success: true, proposal: { ...fallback, ...parseJson(response.text), hasConflict: false, conflictDetails: null } });
   } catch (err: any) {
     console.warn('Calendar command parse failed:', err?.message || err);
-    return res.status(err?.status || 500).json({ success: false, error: err?.message || 'Грешка при разчитане на командата.' });
+    const formatted = formatGeminiError(err, 'Грешка при разчитане на командата.');
+    return res.status(formatted.status).json({ success: false, error: formatted.message });
   }
 });
 

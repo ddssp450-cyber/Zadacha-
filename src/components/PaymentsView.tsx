@@ -20,7 +20,7 @@ import {
 import { Apartment, Building, PaymentObligation, PaymentStatus, UserProfile } from '../types';
 import { isoDay, monthLabel, nextMonth } from '../format';
 import { DeleteButton, fileToBoundedDataUrl } from './PhotoPicker';
-import { getAuthHeaders } from '../lib/firebase';
+import { getAuthHeaders } from '../lib/apiClient';
 
 type PaymentType = PaymentObligation['type'];
 

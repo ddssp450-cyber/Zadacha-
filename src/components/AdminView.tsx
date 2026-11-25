@@ -6,7 +6,7 @@ import {
   deleteBuildingCascade,
   deleteUserAsAdmin,
   fetchAdminOverview,
-} from '../lib/firestoreStore';
+} from '../lib/dataStore';
 
 const ROLE_BG: Record<string, string> = {
   admin: 'Администратор',
